@@ -1,36 +1,90 @@
-# FAST-LIO2 LiDAR-Inertial SLAM Project
+# FAST-LIO2 LiDAR-Inertial SLAM on ROS 2 Jazzy
 
-## Selected System
+This project demonstrates how to install, configure, and run **FAST-LIO2** on **Ubuntu 24.04 with ROS 2 Jazzy** using recorded LiDAR and IMU data.
 
-I selected **Option C: FAST-LIO2 / FAST_LIO_ROS2**
+The provided ROS 2 bag publishes:
 
-## Repository
+| Topic          | Message type                  | Purpose                 |
+| -------------- | ----------------------------- | ----------------------- |
+| `/livox/lidar` | `sensor_msgs/msg/PointCloud2` | LiDAR point-cloud input |
+| `/livox/imu`   | `sensor_msgs/msg/Imu`         | IMU motion input        |
 
-FAST_LIO_ROS2 repository:
+The primary challenge was that the original FAST-LIO Livox configuration expected `livox_ros_driver2/msg/CustomMsg`, while the recorded bag used the standard ROS 2 `PointCloud2` format.
 
-https://github.com/Ericsii/FAST_LIO_ROS2
+The main configuration fix was:
 
-## Why I Chose This System
+```yaml
+preprocess:
+  lidar_type: 4
+```
 
-I chose Option C, FAST-LIO2, because it seemed like the most challenging and fun option. Unlike Option A and B, it incorporates not only LIDAR data but also IMU data, making it the most advanced option and giving me the opportunity to explore how IMU data contributes to LIDAR-based SLAM. I also liked the fact that Option C connects most directly to real-world robotics systems which would help me with future projects that involve SLAM integration. 
+After this change, FAST-LIO successfully produced registered point-cloud and odometry output in RViz.
 
-## System Requirements
+---
 
-| Label | Version |
-|---|---|
-| Ubuntu | >= 20.04 |
-| ROS 2 | >= Foxy (Humble recommended, but I used Jazzy for this tutorial) |
-| PCL | >= 1.8 |
-| Eigen | >= 3.3.4 |
-| Livox SDK | Livox SDK2 |
-| Livox driver | livox_ros_driver2 |
-| SLAM package | FAST_LIO_ROS2 |
+## Project Results
 
-## Installation Steps
+The completed system successfully:
 
-### 1. Source ROS 2 Jazzy
+* Processed recorded LiDAR and IMU data
+* Initialized the IMU
+* Generated a registered 3D point cloud
+* Estimated sensor motion through odometry
+* Displayed the reconstructed environment in RViz
+* Published mapped cloud output on `/cloud_registered`
 
-I first sourced ROS 2 Jazzy and confirmed the ROS distribution.
+This project was evaluated visually in RViz as a qualitative SLAM demonstration.
+
+---
+
+## System Overview
+
+FAST-LIO2 is a LiDAR-inertial odometry and mapping system that combines two sensor inputs:
+
+* **LiDAR** measures the surrounding 3D environment.
+* **IMU** measures acceleration and rotation.
+* **FAST-LIO2** combines both inputs to estimate motion and construct a map.
+
+This project uses the ROS 2 port maintained at:
+
+* [Ericsii/FAST_LIO_ROS2](https://github.com/Ericsii/FAST_LIO_ROS2)
+
+It also depends on:
+
+* [Livox-SDK/Livox-SDK2](https://github.com/Livox-SDK/Livox-SDK2)
+* [Livox-SDK/livox_ros_driver2](https://github.com/Livox-SDK/livox_ros_driver2)
+
+---
+
+## Tested Environment
+
+| Component            | Version                       |
+| -------------------- | ----------------------------- |
+| Operating system     | Ubuntu 24.04                  |
+| ROS distribution     | ROS 2 Jazzy                   |
+| Visualization        | RViz2                         |
+| Point-cloud library  | PCL                           |
+| LiDAR message format | `sensor_msgs/msg/PointCloud2` |
+| IMU message format   | `sensor_msgs/msg/Imu`         |
+| Dataset type         | Recorded ROS 2 bag            |
+
+> This tutorial uses recorded data. It does not cover the Ethernet or network configuration required for a physical Livox LiDAR.
+
+---
+
+# Installation
+
+FAST-LIO requires three main components to be built in this order:
+
+1. Livox SDK2
+2. `livox_ros_driver2`
+3. `FAST_LIO_ROS2`
+
+---
+
+## 1. Source ROS 2 Jazzy
+
+Open a terminal and run:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -43,9 +97,9 @@ Expected output:
 jazzy
 ```
 
-### 2. Install Dependencies
+---
 
-I installed the main dependencies needed for Livox, PCL, RViz, and ROS 2 builds.
+## 2. Install Dependencies
 
 ```bash
 sudo apt update
@@ -55,317 +109,84 @@ sudo apt install -y \
   cmake \
   build-essential \
   python3-colcon-common-extensions \
+  python3-rosdep \
   ros-jazzy-rviz2 \
   ros-jazzy-pcl-conversions \
   ros-jazzy-pcl-ros \
   ros-jazzy-ament-cmake-auto \
-  libpcl-dev
+  libpcl-dev \
+  libeigen3-dev
 ```
 
-I also checked the Eigen version:
+Check the installed Eigen version:
 
 ```bash
 pkg-config --modversion eigen3
 ```
 
-### 3. Livox SDK2 Installation
-
-I installed Livox SDK2 because it is required before building `livox_ros_driver2`.
-
-```bash
-cd ~/Desktop/Livox-SDK2/Livox-SDK2
-mkdir build
-cd build
-cmake ..
-make -j1
-sudo make install
-sudo ldconfig
-```
-
-The original build command used:
-
-```bash
-make -j
-```
-
-However, this caused my Ubuntu virtual machine to freeze or run out of memory. I rebuilt using:
-
-```bash
-make -j1
-```
-
-This completed successfully.
-
-I also had to add:
-
-```cpp
-#include <cstdint>
-```
-
-to two Livox SDK2 header files because the build failed on missing integer types such as `uint8_t`, `uint16_t`, and `uint64_t`.
-
-The files were:
-
-```text
-sdk_core/comm/define.h
-sdk_core/logger_handler/file_manager.h
-```
-
-Result:
-
-```text
-Livox SDK2 built to 100% and installed successfully.
-```
-
-I did not modify the Livox SDK2 network configuration because this project uses recorded ROS 2 bag data instead of a live Livox LiDAR. The SDK2 network configuration would become important later when connecting to a physical Livox sensor, since it controls LiDAR IP addresses, host IP addresses, and data ports.
-
-### 4. livox_ros_driver2 Installation
-
-I created a ROS 2 workspace for the Livox driver.
-
-```bash
-mkdir -p ~/ws_livox/src
-cd ~/ws_livox/src
-git clone https://github.com/Livox-SDK/livox_ros_driver2.git
-```
-
-During the first `livox_ros_driver2` build attempt, this command failed:
-
-```bash
-colcon build --symlink-install
-```
-
-The failure happened because `package.xml` was missing. The repository contained separate package files for ROS 1 and ROS 2:
-
-```text
-package_ROS1.xml
-package_ROS2.xml
-```
-
-Since I was building with ROS 2, I copied the ROS 2 package file:
-
-```bash
-cd ~/ws_livox/src/livox_ros_driver2
-cp package_ROS2.xml package.xml
-```
-
-Then I rebuilt from the workspace root.
-
-```bash
-cd ~/ws_livox
-source /opt/ros/jazzy/setup.bash
-colcon build --symlink-install --parallel-workers 1 --cmake-args -DROS_EDITION=ROS2 -DDISTRO_ROS=jazzy
-```
-
-The `livox_ros_driver2` build also had a ROS 2 Jazzy compatibility issue. The repository documentation recommends ROS 2 Foxy or Humble, but my VM used ROS 2 Jazzy. After fixing the missing `package.xml` issue, the build still failed because `LIVOX_INTERFACES_INCLUDE_DIRECTORIES` was not set. Building with the ROS 2 and Jazzy CMake arguments fixed the issue.
-
-After building, I sourced the workspace:
-
-```bash
-source ~/ws_livox/install/setup.bash
-```
-
-I checked that the package was visible:
-
-```bash
-ros2 pkg list | grep livox
-```
-
-Expected output:
-
-```text
-livox_ros_driver2
-```
-
-### 5. FAST_LIO_ROS2 Installation
-
-I created a FAST-LIO workspace and cloned the repository with submodules.
-
-```bash
-mkdir -p ~/fastlio_ws/src
-cd ~/fastlio_ws/src
-git clone https://github.com/Ericsii/FAST_LIO_ROS2.git --recursive
-```
-
-Then I built FAST-LIO.
-
-```bash
-cd ~/fastlio_ws
-source /opt/ros/jazzy/setup.bash
-source ~/ws_livox/install/setup.bash
-rosdep install --from-paths src --ignore-src -y
-colcon build --symlink-install --parallel-workers 1
-```
-
-After building, I sourced the FAST-LIO workspace:
-
-```bash
-source ~/fastlio_ws/install/setup.bash
-```
-
-I checked that the FAST-LIO package was visible:
-
-```bash
-ros2 pkg list | grep fast
-```
-
-Expected relevant output:
-
-```text
-fast_lio
-```
-
-### 6. ROS 1 vs ROS 2 Setup Issue
-
-The FAST_LIO_ROS2 README says to source:
-
-```bash
-source $Livox_ros_driver_dir$/devel/setup.bash
-```
-
-However, `devel/setup.bash` is used in ROS 1 workspaces. My Livox driver was built as a ROS 2 workspace, so I used:
-
-```bash
-source ~/ws_livox/install/setup.bash
-```
-
-instead.
-
-This was an important difference because ROS 2 workspaces use:
-
-```text
-install/setup.bash
-```
-
-not:
-
-```text
-devel/setup.bash
-```
-
-## Build Steps
-
-## Build Steps
-
-This project required building three main components:
-
-1. Livox SDK2
-2. `livox_ros_driver2`
-3. FAST_LIO_ROS2
-
 ---
 
-### 1. Build Livox SDK2
+## 3. Install Livox SDK2
 
-Livox SDK2 had to be built first because `livox_ros_driver2` depends on it.
+Clone and build Livox SDK2:
 
 ```bash
-cd ~/Desktop/Livox-SDK2/Livox-SDK2
+cd ~
+
+git clone https://github.com/Livox-SDK/Livox-SDK2.git
+cd ~/Livox-SDK2
+
 mkdir -p build
 cd build
+
 cmake ..
 make -j1
 sudo make install
 sudo ldconfig
 ```
 
-I used:
-
-```bash
-make -j1
-```
-
-instead of:
-
-```bash
-make -j
-```
-
-because `make -j` caused my Ubuntu virtual machine to freeze or run out of memory.
-
-I also had to add:
-
-```cpp
-#include <cstdint>
-```
-
-to these Livox SDK2 header files:
-
-```text
-sdk_core/comm/define.h
-sdk_core/logger_handler/file_manager.h
-```
-
-This fixed missing integer type errors involving types such as:
-
-```text
-uint8_t
-uint16_t
-uint32_t
-uint64_t
-```
-
-After these fixes, Livox SDK2 built to 100% and installed successfully.
+`make -j1` limits the build to one worker. This is slower than using all available CPU cores, but it is safer for virtual machines with limited memory.
 
 ---
 
-### 2. Build livox_ros_driver2
+## 4. Build livox_ros_driver2
 
-The Livox ROS 2 driver was built in:
-
-```text
-~/ws_livox
-```
-
-Commands:
+Create a separate ROS 2 workspace for the Livox driver:
 
 ```bash
 mkdir -p ~/ws_livox/src
 cd ~/ws_livox/src
+
 git clone https://github.com/Livox-SDK/livox_ros_driver2.git
 ```
 
-The first build attempt failed because `package.xml` was missing. The repository included separate package files for ROS 1 and ROS 2:
-
-```text
-package_ROS1.xml
-package_ROS2.xml
-```
-
-Since this project used ROS 2, I copied the ROS 2 package file:
-
-```bash
-cd ~/ws_livox/src/livox_ros_driver2
-cp package_ROS2.xml package.xml
-```
-
-Then I built from the workspace root:
+Install dependencies and build:
 
 ```bash
 cd ~/ws_livox
+
 source /opt/ros/jazzy/setup.bash
-colcon build --symlink-install --parallel-workers 1 --cmake-args -DROS_EDITION=ROS2 -DDISTRO_ROS=jazzy
+
+rosdep install --from-paths src --ignore-src -r -y
+
+colcon build \
+  --symlink-install \
+  --parallel-workers 1
 ```
 
-I used the Jazzy CMake arguments because the driver originally had a ROS 2 Jazzy compatibility issue involving:
-
-```text
-LIVOX_INTERFACES_INCLUDE_DIRECTORIES
-```
-
-After building, I sourced the workspace:
+Source the completed workspace:
 
 ```bash
 source ~/ws_livox/install/setup.bash
 ```
 
-I confirmed the package was available:
+Confirm that ROS 2 can find the driver:
 
 ```bash
 ros2 pkg list | grep livox
 ```
 
-Expected output:
+Expected relevant output:
 
 ```text
 livox_ros_driver2
@@ -373,39 +194,41 @@ livox_ros_driver2
 
 ---
 
-### 3. Build FAST_LIO_ROS2
+## 5. Build FAST_LIO_ROS2
 
-FAST_LIO_ROS2 was built in:
-
-```text
-~/fastlio_ws
-```
-
-Commands:
+Create a workspace for FAST-LIO:
 
 ```bash
 mkdir -p ~/fastlio_ws/src
 cd ~/fastlio_ws/src
+
 git clone https://github.com/Ericsii/FAST_LIO_ROS2.git --recursive
 ```
 
-Then I built the workspace:
+The `--recursive` option is required because FAST-LIO uses Git submodules, including `ikd-Tree`.
+
+Install dependencies and build:
 
 ```bash
 cd ~/fastlio_ws
+
 source /opt/ros/jazzy/setup.bash
 source ~/ws_livox/install/setup.bash
-rosdep install --from-paths src --ignore-src -y
-colcon build --symlink-install --parallel-workers 1
+
+rosdep install --from-paths src --ignore-src -r -y
+
+colcon build \
+  --symlink-install \
+  --parallel-workers 1
 ```
 
-After building, I sourced the FAST-LIO workspace:
+Source the workspace:
 
 ```bash
 source ~/fastlio_ws/install/setup.bash
 ```
 
-I confirmed the package was available:
+Confirm that the FAST-LIO package is available:
 
 ```bash
 ros2 pkg list | grep fast
@@ -419,252 +242,145 @@ fast_lio
 
 ---
 
-### 4. Important ROS 2 Build Note
-
-The FAST_LIO_ROS2 README referenced:
-
-```bash
-source $Livox_ros_driver_dir$/devel/setup.bash
-```
-
-However, that is a ROS 1 workspace path. Since this project used ROS 2, I used:
-
-```bash
-source ~/ws_livox/install/setup.bash
-```
-
-instead.
+## ROS 2 Workspace Sourcing
 
 ROS 2 workspaces use:
 
-```text
+```bash
 install/setup.bash
 ```
 
-not:
+They do not use the ROS 1 workspace path:
 
-```text
+```bash
 devel/setup.bash
 ```
 
-## Input Bag Information
+For this project, source the workspaces in the following order:
 
-## Input Bag Information
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/ws_livox/install/setup.bash
+source ~/fastlio_ws/install/setup.bash
+```
 
-The provided class bags were stored locally in:
+These commands must be run in every new terminal that uses FAST-LIO.
+
+They can optionally be added to `~/.bashrc`:
+
+```bash
+echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
+echo "source ~/ws_livox/install/setup.bash" >> ~/.bashrc
+echo "source ~/fastlio_ws/install/setup.bash" >> ~/.bashrc
+```
+
+Then reload the shell:
+
+```bash
+source ~/.bashrc
+```
+
+---
+
+# Inspecting the ROS 2 Bag
+
+The recorded bags used for this project were stored in:
 
 ```text
 ~/lidar_bags
 ```
 
-The bags I worked with were:
-
-```text
-lidar_bag
-lidar_bag2
-lidar_bag3
-```
-
-The main bag used for the FAST-LIO2 test was:
+The primary bag was:
 
 ```text
 ~/lidar_bags/lidar_bag
 ```
 
-I inspected the bag before running FAST-LIO:
+Inspect its metadata:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
+
 ros2 bag info ~/lidar_bags/lidar_bag
 ```
 
-To play the bag, I used:
+Play the bag in a terminal:
 
 ```bash
 ros2 bag play ~/lidar_bags/lidar_bag
 ```
 
-The bag published the following important topics:
-
-| Topic | Type | Purpose |
-|---|---|---|
-| `/livox/lidar` | `sensor_msgs/msg/PointCloud2` | LiDAR point cloud input |
-| `/livox/imu` | `sensor_msgs/msg/Imu` | IMU motion input |
-
-I confirmed the active topics while the bag was playing:
+While the bag is playing, open another terminal and check the available topics:
 
 ```bash
+source /opt/ros/jazzy/setup.bash
+
 ros2 topic list -t
 ```
 
-I also checked the LiDAR topic rate:
+The important topics should include:
+
+```text
+/livox/lidar [sensor_msgs/msg/PointCloud2]
+/livox/imu [sensor_msgs/msg/Imu]
+```
+
+Check the publication rates:
 
 ```bash
 ros2 topic hz /livox/lidar
-```
-
-and the IMU topic rate:
-
-```bash
 ros2 topic hz /livox/imu
 ```
 
-To inspect the LiDAR message frame and fields, I used:
-
-```bash
-ros2 topic echo --once /livox/lidar --field header
-ros2 topic echo --once /livox/lidar --field header.frame_id
-ros2 topic echo --once /livox/lidar --field fields
-```
-
-The important discovery was that `/livox/lidar` was published as:
-
-```text
-sensor_msgs/msg/PointCloud2
-```
-
-not:
-
-```text
-livox_ros_driver2/msg/CustomMsg
-```
-
-This mattered because the original FAST-LIO Livox configuration expected Livox custom messages. Since the bag used standard `PointCloud2` messages, I had to change the FAST-LIO configuration to use:
-
-```yaml
-preprocess:
-  lidar_type: 4
-```
-
-This allowed FAST-LIO to process the provided bag correctly.
-
-## Topic and Frame Checks
-
-## Topic and Frame Checks
-
-While the bag was playing, I checked the input topics and frame information to make sure FAST-LIO was receiving the correct data.
-
-The LiDAR input topic was:
-
-```text
-/livox/lidar
-```
-
-The IMU input topic was:
-
-```text
-/livox/imu
-```
-
-I checked the topic names and message types with:
-
-```bash
-ros2 topic list -t
-```
-
-The important topics were:
-
-| Topic | Type |
-|---|---|
-| `/livox/lidar` | `sensor_msgs/msg/PointCloud2` |
-| `/livox/imu` | `sensor_msgs/msg/Imu` |
-
-I checked the LiDAR message header with:
-
-```bash
-ros2 topic echo --once /livox/lidar --field header
-```
-
-I checked the LiDAR frame ID with:
+Inspect the LiDAR frame:
 
 ```bash
 ros2 topic echo --once /livox/lidar --field header.frame_id
 ```
 
-I also checked the PointCloud2 fields with:
+Inspect the fields in the point-cloud message:
 
 ```bash
 ros2 topic echo --once /livox/lidar --field fields
 ```
 
-This confirmed that the bag was publishing a standard ROS 2 `PointCloud2` message instead of a Livox custom message.
-
-For raw LiDAR visualization in RViz, the fixed frame would normally be the LiDAR frame from the message header, such as:
-
-```text
-livox_frame
-```
-
-However, this project was not only visualizing the raw `/livox/lidar` topic. I was running FAST-LIO and visualizing FAST-LIO's processed SLAM output.
-
-For the FAST-LIO output, the correct RViz fixed frame was:
-
-```text
-camera_init
-```
-
-This frame worked because RViz showed:
-
-```text
-Global Status: Ok
-Fixed Frame: OK
-```
-
-The difference is:
-
-| Situation | RViz display | Fixed frame |
-|---|---|---|
-| Raw LiDAR bag visualization | `/livox/lidar` | LiDAR message frame, such as `livox_frame` |
-| FAST-LIO output visualization | `/cloud_registered`, odometry, map/path outputs | `camera_init` |
-
-Using `camera_init` allowed RViz to display the FAST-LIO registered point cloud and odometry output correctly.
-
-## Configuration Changes
-
-## Configuration Changes
-
-The most important configuration change was switching FAST-LIO from Livox custom message mode to standard `PointCloud2` mode.
-
-The original FAST-LIO Livox configuration expected the LiDAR input to use:
-
-```text
-livox_ros_driver2/msg/CustomMsg
-```
-
-However, the provided class bags publish `/livox/lidar` as:
+The important discovery for this project was that `/livox/lidar` used:
 
 ```text
 sensor_msgs/msg/PointCloud2
 ```
 
-Because of this, FAST-LIO did not process the bag correctly with the original Livox setting.
-
-I created a new configuration file:
+rather than:
 
 ```text
-~/fastlio_ws/src/FAST_LIO_ROS2/config/livox_pointcloud2.yaml
+livox_ros_driver2/msg/CustomMsg
 ```
 
-This file was copied from the original FAST-LIO config and modified for the provided bags.
+---
 
-The main changes were:
+# FAST-LIO Configuration
 
-| Parameter | Original value | New value | Reason |
-|---|---|---|---|
-| `preprocess.lidar_type` | `1` | `4` | The bag publishes `/livox/lidar` as `sensor_msgs/msg/PointCloud2`, not `livox_ros_driver2/msg/CustomMsg` |
-| `common.lid_topic` | existing/default value | `/livox/lidar` | Matches the provided bag LiDAR topic |
-| `common.imu_topic` | existing/default value | `/livox/imu` | Matches the provided bag IMU topic |
+## 1. Create a PointCloud2 Configuration
 
-The most important setting was:
+Move to the FAST-LIO configuration directory:
 
-```yaml
-preprocess:
-  lidar_type: 4
+```bash
+cd ~/fastlio_ws/src/FAST_LIO_ROS2/config
 ```
 
-This told FAST-LIO to use the standard `sensor_msgs/msg/PointCloud2` callback instead of the Livox custom message callback.
+Copy the existing Livox configuration:
 
-The topic settings were:
+```bash
+cp avia.yaml livox_pointcloud2.yaml
+```
+
+Open the new file:
+
+```bash
+nano livox_pointcloud2.yaml
+```
+
+Update the input topics:
 
 ```yaml
 common:
@@ -672,60 +388,104 @@ common:
   imu_topic: "/livox/imu"
 ```
 
-After creating the modified config file, I copied it into the installed FAST-LIO package config directory:
+Change the LiDAR input type:
 
-```bash
-cp ~/fastlio_ws/src/FAST_LIO_ROS2/config/livox_pointcloud2.yaml \
-   ~/fastlio_ws/install/fast_lio/share/fast_lio/config/
+```yaml
+preprocess:
+  lidar_type: 4
 ```
 
-This was necessary because the launch file searched for config files inside the installed package directory.
+The value `4` tells FAST-LIO to use its standard `sensor_msgs/msg/PointCloud2` input callback.
 
-When FAST-LIO launched correctly, the terminal showed:
+The original Livox setting generally uses:
+
+```yaml
+preprocess:
+  lidar_type: 1
+```
+
+That setting expects:
 
 ```text
-p_pre->lidar_type 4
+livox_ros_driver2/msg/CustomMsg
 ```
 
-This confirmed that the modified config file was being used.
+Because this project's bag uses `PointCloud2`, `lidar_type: 1` is not appropriate.
 
-When FAST-LIO launched incorrectly, the terminal showed:
+Save the file in Nano with:
 
 ```text
-p_pre->lidar_type 1
+Ctrl+O
+Enter
+Ctrl+X
 ```
-
-That meant it was still using the original Livox custom message configuration, which was wrong for the provided bag.
-
-## Running FAST-LIO2
-
-## Running FAST-LIO2
-
-The reliable workflow was to launch FAST-LIO first, then play the bag once.
-
-I did **not** use loop playback for the final FAST-LIO run because FAST-LIO did not reliably continue publishing output after the bag restarted.
 
 ---
 
-### Terminal 1: Start FAST-LIO
+## 2. Rebuild FAST-LIO
+
+After adding the configuration file, rebuild the package so the file is installed into the package share directory:
 
 ```bash
 cd ~/fastlio_ws
+
+source /opt/ros/jazzy/setup.bash
+source ~/ws_livox/install/setup.bash
+
+colcon build \
+  --symlink-install \
+  --parallel-workers 1 \
+  --packages-select fast_lio
+```
+
+Source the rebuilt workspace:
+
+```bash
+source ~/fastlio_ws/install/setup.bash
+```
+
+Verify that the configuration file was installed:
+
+```bash
+ls ~/fastlio_ws/install/fast_lio/share/fast_lio/config
+```
+
+The output should include:
+
+```text
+livox_pointcloud2.yaml
+```
+
+---
+
+# Running FAST-LIO2
+
+Use three terminals for the most reliable workflow.
+
+Start FAST-LIO before playing the bag.
+
+---
+
+## Terminal 1: Launch FAST-LIO
+
+```bash
+cd ~/fastlio_ws
+
 source /opt/ros/jazzy/setup.bash
 source ~/ws_livox/install/setup.bash
 source ~/fastlio_ws/install/setup.bash
-ros2 launch fast_lio mapping.launch.py config_file:=livox_pointcloud2.yaml
+
+ros2 launch fast_lio mapping.launch.py \
+  config_file:=livox_pointcloud2.yaml
 ```
 
-When the correct config loaded, the terminal showed:
+When the correct configuration loads, the terminal should show:
 
 ```text
 p_pre->lidar_type 4
 ```
 
-This confirmed that FAST-LIO was using the `PointCloud2` configuration.
-
-Other successful terminal messages included:
+Other successful initialization messages may include:
 
 ```text
 Multi thread started
@@ -734,132 +494,189 @@ IMU Initial Done
 Initialize the map kdtree
 ```
 
-The line:
-
-```text
-IMU Initial Done
-```
-
-showed that FAST-LIO received and initialized the IMU data from `/livox/imu`.
+`IMU Initial Done` indicates that FAST-LIO received enough IMU data to initialize its motion estimate.
 
 ---
 
-### Terminal 2: Play the Bag
+## Terminal 2: Play the Bag
 
-In a second terminal, I played the bag:
+Open a second terminal:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/ws_livox/install/setup.bash
+
 ros2 bag play ~/lidar_bags/lidar_bag
 ```
 
-For reliable testing, I played the bag once instead of using:
+Play the bag once rather than using loop playback.
+
+Avoid:
 
 ```bash
 ros2 bag play ~/lidar_bags/lidar_bag --loop
 ```
 
-Loop playback caused problems after the bag restarted.
+Loop playback can reset timestamps when the recording restarts, which may cause FAST-LIO to stop publishing output correctly.
 
 ---
 
-### Terminal 3: Monitor Topics
+## Terminal 3: Monitor the Data
 
-In a third terminal, I checked the input and output topics:
+Open a third terminal:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/ws_livox/install/setup.bash
 source ~/fastlio_ws/install/setup.bash
+```
 
+Check the input topics:
+
+```bash
 ros2 topic hz /livox/lidar
 ros2 topic hz /livox/imu
+```
+
+Check the main FAST-LIO output:
+
+```bash
 ros2 topic hz /cloud_registered
 ```
 
-The input topics were:
+The expected data flow is:
 
 ```text
-/livox/lidar
-/livox/imu
+/livox/lidar ─┐
+              ├──> FAST-LIO2 ───> /cloud_registered
+/livox/imu ───┘
 ```
 
-The main FAST-LIO output topic I checked was:
-
-```text
-/cloud_registered
-```
-
-If `/livox/lidar` and `/livox/imu` were publishing but `/cloud_registered` was not, then the bag was active but FAST-LIO was not producing mapped cloud output.
+If the two input topics are active but `/cloud_registered` is not publishing, FAST-LIO is not processing the data correctly.
 
 ---
 
-### RViz Settings
+# RViz Configuration
 
-RViz opened from the FAST-LIO launch file.
+RViz should open automatically with the FAST-LIO launch file.
 
-The fixed frame was set to:
+Set the RViz fixed frame to:
 
 ```text
 camera_init
 ```
 
-This worked because RViz showed:
+This fixed frame is used for FAST-LIO's processed mapping output.
+
+The fixed frame for raw LiDAR visualization may instead be the frame from the LiDAR message header, such as:
+
+```text
+livox_frame
+```
+
+The correct frame therefore depends on what is being displayed:
+
+| Visualization                          | Fixed frame         |
+| -------------------------------------- | ------------------- |
+| Raw `/livox/lidar` topic               | LiDAR message frame |
+| FAST-LIO registered cloud and odometry | `camera_init`       |
+
+Useful RViz displays include:
+
+| Display          | Purpose                       |
+| ---------------- | ----------------------------- |
+| Registered cloud | Reconstructed environment     |
+| Map cloud        | Accumulated map               |
+| Effected cloud   | Points used during processing |
+| Odometry         | Estimated sensor position     |
+| Path             | Estimated sensor trajectory   |
+
+In this project:
+
+* The colored point cloud represented the reconstructed environment.
+* The odometry display represented the estimated movement of the LiDAR and IMU sensor.
+
+If the map appears very small, use **Focus Camera** or adjust the RViz view.
+
+---
+
+# Verifying a Successful Run
+
+A successful run should satisfy the following checks.
+
+## Input Topics
+
+```bash
+ros2 topic hz /livox/lidar
+ros2 topic hz /livox/imu
+```
+
+Both commands should report incoming messages.
+
+## FAST-LIO Output
+
+```bash
+ros2 topic hz /cloud_registered
+```
+
+This should report registered point-cloud messages.
+
+## Correct Configuration
+
+The FAST-LIO terminal should report:
+
+```text
+p_pre->lidar_type 4
+```
+
+## IMU Initialization
+
+The terminal should report:
+
+```text
+IMU Initial Done
+```
+
+## RViz Status
+
+RViz should show:
 
 ```text
 Global Status: Ok
 Fixed Frame: OK
 ```
 
-The main RViz displays I used were:
-
-| Display | Meaning |
-|---|---|
-| `CloudRegistered` | Registered point cloud output |
-| `CloudMap` | Map point cloud display |
-| `CloudEffected` | Processed/effected cloud points |
-| `Odometry` | Estimated LiDAR/IMU sensor pose |
-| `Path` | Estimated trajectory over time |
-
-In RViz:
+with the fixed frame set to:
 
 ```text
-Colored point cloud = reconstructed environment
-Red odometry line = estimated sensor movement
+camera_init
 ```
 
-The red line came from the odometry display. It showed FAST-LIO's estimate of how the LiDAR/IMU sensor moved through the environment.
+---
 
-## Results
+# Troubleshooting
 
+## Livox SDK2 Build Freezes
 
+Using all available CPU cores may consume too much memory in a virtual machine.
 
-## Problems and Troubleshooting
-
-### Problem 1: Livox SDK2 build froze the VM
-
-The original build command was:
+Instead of:
 
 ```bash
 make -j
 ```
 
-This caused my Ubuntu virtual machine to freeze or run out of memory.
-
-Solution:
+use:
 
 ```bash
 make -j1
 ```
 
-Using `make -j1` limited the build to one thread and allowed Livox SDK2 to build successfully.
-
 ---
 
-### Problem 2: Missing integer type errors in Livox SDK2
+## Missing Integer-Type Errors
 
-The Livox SDK2 build failed with missing integer type errors involving types such as:
+Some older Livox SDK2 versions may fail with errors involving:
 
 ```text
 uint8_t
@@ -868,270 +685,248 @@ uint32_t
 uint64_t
 ```
 
-Solution:
-
-I added:
+Only when those errors appear, add:
 
 ```cpp
 #include <cstdint>
 ```
 
-to the affected Livox SDK2 header files:
+to the affected header files.
+
+During this project, the affected files were:
 
 ```text
 sdk_core/comm/define.h
 sdk_core/logger_handler/file_manager.h
 ```
 
-After adding this include, the SDK built successfully.
+Rebuild Livox SDK2 after making the change:
+
+```bash
+cd ~/Livox-SDK2/build
+
+make -j1
+sudo make install
+sudo ldconfig
+```
+
+Do not modify these files unless the missing-integer-type error actually occurs.
 
 ---
 
-### Problem 3: livox_ros_driver2 was missing package.xml
+## livox_ros_driver2 Is Missing package.xml
 
-The first `livox_ros_driver2` build attempt failed because `package.xml` was missing.
-
-The repository contained separate package files:
+Some older repository versions contained:
 
 ```text
 package_ROS1.xml
 package_ROS2.xml
 ```
 
-Since this project used ROS 2, I copied the ROS 2 package file:
+but did not contain the expected `package.xml`.
+
+Only when `package.xml` is missing, run:
 
 ```bash
 cd ~/ws_livox/src/livox_ros_driver2
+
 cp package_ROS2.xml package.xml
 ```
 
-Then I rebuilt the workspace.
+Then rebuild:
+
+```bash
+cd ~/ws_livox
+
+source /opt/ros/jazzy/setup.bash
+
+colcon build \
+  --symlink-install \
+  --parallel-workers 1
+```
 
 ---
 
-### Problem 4: livox_ros_driver2 had a ROS 2 Jazzy compatibility issue
+## Jazzy Driver Build Error
 
-After fixing the missing `package.xml`, the driver still failed to build on ROS 2 Jazzy. The error involved:
+An older version of the driver produced an error involving:
 
 ```text
 LIVOX_INTERFACES_INCLUDE_DIRECTORIES
 ```
 
-The repository documentation recommends ROS 2 Foxy or Humble, but this project used ROS 2 Jazzy.
-
-Solution:
-
-I rebuilt using ROS 2 and Jazzy CMake arguments:
+If the standard build fails with that specific error, rebuild with explicit ROS 2 Jazzy arguments:
 
 ```bash
 cd ~/ws_livox
-source /opt/ros/jazzy/setup.bash
-colcon build --symlink-install --parallel-workers 1 --cmake-args -DROS_EDITION=ROS2 -DDISTRO_ROS=jazzy
-```
 
-After this, `livox_ros_driver2` built successfully.
+source /opt/ros/jazzy/setup.bash
+
+colcon build \
+  --symlink-install \
+  --parallel-workers 1 \
+  --cmake-args \
+  -DROS_EDITION=ROS2 \
+  -DDISTRO_ROS=jazzy
+```
 
 ---
 
-### Problem 5: FAST_LIO_ROS2 README used ROS 1 workspace instructions
+## devel/setup.bash Does Not Exist
 
-The FAST_LIO_ROS2 README referenced:
+Some FAST-LIO instructions reference:
 
 ```bash
-source $Livox_ros_driver_dir$/devel/setup.bash
+source <livox-workspace>/devel/setup.bash
 ```
 
-However, `devel/setup.bash` is used in ROS 1 workspaces.
+That is a ROS 1 workspace path.
 
-This project used ROS 2, so the correct setup file was:
+For ROS 2, use:
 
 ```bash
 source ~/ws_livox/install/setup.bash
 ```
 
-ROS 2 workspaces use:
-
-```text
-install/setup.bash
-```
-
-not:
-
-```text
-devel/setup.bash
-```
-
 ---
 
-### Problem 6: FAST-LIO initially used the wrong LiDAR message type
+## FAST-LIO Loads lidar_type 1
 
-FAST-LIO originally launched with:
+If the terminal shows:
 
 ```text
 p_pre->lidar_type 1
 ```
 
-This was wrong for the provided bags.
+FAST-LIO is still using a Livox CustomMsg configuration.
 
-The provided bags publish `/livox/lidar` as:
-
-```text
-sensor_msgs/msg/PointCloud2
-```
-
-but `lidar_type: 1` expects Livox custom messages:
-
-```text
-livox_ros_driver2/msg/CustomMsg
-```
-
-Solution:
-
-I created a modified config file and changed:
+Confirm that the configuration contains:
 
 ```yaml
 preprocess:
   lidar_type: 4
 ```
 
-This made FAST-LIO use the standard `PointCloud2` input.
+Then rebuild and source the workspace:
 
-When the correct config loaded, the terminal showed:
+```bash
+cd ~/fastlio_ws
 
-```text
-p_pre->lidar_type 4
+colcon build \
+  --symlink-install \
+  --parallel-workers 1 \
+  --packages-select fast_lio
+
+source ~/fastlio_ws/install/setup.bash
+```
+
+Relaunch FAST-LIO:
+
+```bash
+ros2 launch fast_lio mapping.launch.py \
+  config_file:=livox_pointcloud2.yaml
 ```
 
 ---
 
-### Problem 7: Modified FAST-LIO config file was not found
+## Configuration File Is Not Found
 
-At first, FAST-LIO warned that the modified config file path was not a file. This happened because the launch file looked for config files inside the installed package directory.
+Confirm that the source file exists:
 
-Solution:
+```bash
+ls ~/fastlio_ws/src/FAST_LIO_ROS2/config/livox_pointcloud2.yaml
+```
 
-I copied the modified config file into the installed FAST-LIO config folder:
+Then rebuild FAST-LIO:
+
+```bash
+cd ~/fastlio_ws
+
+colcon build \
+  --symlink-install \
+  --parallel-workers 1 \
+  --packages-select fast_lio
+```
+
+Check the installed configuration directory:
+
+```bash
+ls ~/fastlio_ws/install/fast_lio/share/fast_lio/config
+```
+
+As a fallback, copy the file manually:
 
 ```bash
 cp ~/fastlio_ws/src/FAST_LIO_ROS2/config/livox_pointcloud2.yaml \
    ~/fastlio_ws/install/fast_lio/share/fast_lio/config/
 ```
 
-After this, I relaunched FAST-LIO with:
+---
+
+## No Output on /cloud_registered
+
+First, confirm that the input topics are active:
 
 ```bash
-ros2 launch fast_lio mapping.launch.py config_file:=livox_pointcloud2.yaml
+ros2 topic hz /livox/lidar
+ros2 topic hz /livox/imu
 ```
 
-Then the terminal correctly showed:
+Then check:
 
-```text
-p_pre->lidar_type 4
-```
+1. The configuration uses the correct topic names.
+2. `preprocess.lidar_type` is set to `4`.
+3. The FAST-LIO terminal reports `p_pre->lidar_type 4`.
+4. The IMU initializes successfully.
+5. The bag is played after FAST-LIO starts.
+
+Restart FAST-LIO and play the bag from the beginning.
 
 ---
 
-### Problem 8: RViz fixed frame confusion
+## RViz Reports a Missing Fixed Frame
 
-In earlier raw LiDAR visualization tutorials, the RViz fixed frame was set to the LiDAR frame from the message header, such as:
-
-```text
-livox_frame
-```
-
-However, this project visualized FAST-LIO output, not only the raw `/livox/lidar` topic.
-
-For FAST-LIO output, the correct fixed frame was:
+For FAST-LIO output, set:
 
 ```text
-camera_init
+Fixed Frame: camera_init
 ```
 
-This worked because RViz showed:
+The frame may not exist until FAST-LIO begins receiving and processing data.
 
-```text
-Global Status: Ok
-Fixed Frame: OK
-```
-
-The difference was:
-
-| Situation | Fixed frame |
-|---|---|
-| Raw `/livox/lidar` visualization | LiDAR message frame, such as `livox_frame` |
-| FAST-LIO output visualization | `camera_init` |
+Start FAST-LIO first, then play the bag.
 
 ---
 
-### Problem 9: RViz point cloud looked very small
+## Point Cloud Appears Very Small
 
-At first, the mapped point cloud appeared very small in RViz.
+This is usually an RViz camera issue rather than a mapping failure.
 
-This was a visualization issue, not a SLAM failure.
+Try:
 
-Solution:
-
-I adjusted the RViz camera view by zooming, panning, rotating, and using Focus Camera. I also adjusted the point cloud display settings.
-
-Useful RViz controls:
-
-```text
-Mouse wheel = zoom in/out
-Middle mouse drag = pan
-Left mouse drag = rotate
-Focus Camera = center the view on the selected cloud
-```
+* Focus Camera
+* Zooming in
+* Panning toward the cloud
+* Rotating the view
+* Increasing the point size in the point-cloud display
 
 ---
 
-### Problem 10: Red line in RViz was confusing
+## Output Stops After the Bag Restarts
 
-A red line appeared in RViz. At first I thought it might be the Path display, but after turning displays on and off, I confirmed it came from the Odometry display.
+During loop playback, the bag's timestamps return to the beginning of the recording.
 
-The red line represented FAST-LIO's estimated sensor movement.
+FAST-LIO maintains an internal LiDAR-inertial state, so this timestamp reset may cause mapped output to stop even though the input topics remain active.
 
-In RViz:
+The reliable workflow is:
 
-```text
-Colored point cloud = reconstructed environment
-Red odometry line = estimated LiDAR/IMU movement
-```
+1. Stop the bag.
+2. Stop FAST-LIO.
+3. Relaunch FAST-LIO.
+4. Play the bag once.
+5. Record results before the bag ends.
 
-This was useful because it showed that FAST-LIO was producing odometry, not only a point cloud.
-
----
-
-### Problem 11: Bag loop playback caused FAST-LIO output to stop
-
-When I replayed the bag multiple times without restarting FAST-LIO, RViz did not always update correctly.
-
-I confirmed that the input bag topics were still publishing:
-
-```text
-/livox/lidar
-/livox/imu
-```
-
-However, FAST-LIO stopped publishing:
-
-```text
-/cloud_registered
-```
-
-This showed that the rosbag was still active, but FAST-LIO was no longer producing registered cloud output after the bag looped or restarted.
-
-The likely reason is that loop playback causes the bag timestamps to jump back to the beginning. FAST-LIO maintains an internal LiDAR-inertial motion estimate, so the timestamp reset can cause the pipeline to stop updating correctly.
-
-Reliable solution:
-
-```text
-Restart FAST-LIO/RViz.
-Play the bag once.
-Take screenshots while the output appears.
-Restart FAST-LIO before running the bag again.
-```
-
-For reliable evaluation, I used:
+Use:
 
 ```bash
 ros2 bag play ~/lidar_bags/lidar_bag
@@ -1145,143 +940,86 @@ ros2 bag play ~/lidar_bags/lidar_bag --loop
 
 ---
 
-### Summary of Main Fixes
+# Main Fixes Applied
 
-| Problem | Fix |
-|---|---|
-| Livox SDK2 froze VM | Built with `make -j1` |
-| Missing integer types | Added `#include <cstdint>` |
-| Missing `package.xml` | Copied `package_ROS2.xml` to `package.xml` |
-| Jazzy driver build issue | Built with `-DROS_EDITION=ROS2 -DDISTRO_ROS=jazzy` |
-| ROS 1 setup path | Used `install/setup.bash` instead of `devel/setup.bash` |
-| Wrong FAST-LIO LiDAR type | Changed `lidar_type` from `1` to `4` |
-| Config not found | Copied config into installed FAST-LIO share directory |
-| RViz fixed frame confusion | Used `camera_init` for FAST-LIO output |
-| Bag loop issue | Played bag once from a fresh FAST-LIO launch |
+| Problem                                | Solution                                 |
+| -------------------------------------- | ---------------------------------------- |
+| SDK build consumed too much memory     | Used `make -j1`                          |
+| Older SDK missed integer definitions   | Added `<cstdint>` where required         |
+| Older driver lacked `package.xml`      | Copied `package_ROS2.xml`                |
+| Older driver had a Jazzy CMake error   | Added explicit ROS 2 Jazzy arguments     |
+| README referenced a ROS 1 setup path   | Used `install/setup.bash`                |
+| Bag used standard PointCloud2 messages | Changed `lidar_type` from `1` to `4`     |
+| Custom configuration was not installed | Rebuilt FAST-LIO or copied the file      |
+| RViz used the wrong fixed frame        | Used `camera_init`                       |
+| Bag loops interrupted mapped output    | Played the bag once after a fresh launch |
 
-## Limitations
+---
 
-## Limitations
+# Limitations
 
-The main limitation was looped rosbag playback. FAST-LIO worked reliably when the bag was played once from a fresh launch, but it did not reliably continue publishing `/cloud_registered` after the bag restarted in loop mode.
+This project has several limitations:
 
-During loop playback, I confirmed that the input topics were still active:
+1. **Recorded data only**
 
-```text
-/livox/lidar
-/livox/imu
-```
+   The system was tested using ROS 2 bag data rather than a live physical Livox LiDAR.
 
-However, FAST-LIO stopped publishing:
+2. **No live network configuration**
 
-```text
-/cloud_registered
-```
+   The project did not test LiDAR IP addresses, host IP settings, Ethernet communication, or `MID360_config.json`.
 
-This showed that the bag was still playing, but FAST-LIO was no longer producing registered point cloud output after the loop restarted.
+3. **Qualitative evaluation**
 
-For the most reliable result, I used this workflow:
+   The output was evaluated visually in RViz. The estimated trajectory was not compared with ground-truth data.
 
-```text
-Restart FAST-LIO/RViz.
-Play the bag once.
-Capture screenshots while the output appears.
-Restart FAST-LIO before running the bag again.
-```
+4. **Loop playback instability**
 
-Another limitation is that this project used recorded ROS 2 bag data instead of a live physical Livox LiDAR scanner. Because of that, I did not test real-time Ethernet setup, LiDAR IP configuration, host IP configuration, or live sensor communication.
+   FAST-LIO did not reliably continue publishing `/cloud_registered` after the bag restarted in loop mode.
 
-A real Livox Mid-360 setup would require additional steps, including:
+5. **Project-specific configuration**
 
-```text
-powering the LiDAR,
-connecting Ethernet,
-setting the host IP address,
-checking the LiDAR IP address,
-editing MID360_config.json,
-launching livox_ros_driver2,
-and verifying live /livox/lidar and /livox/imu topics.
-```
+   The `lidar_type: 4` configuration is specifically required because this dataset publishes `sensor_msgs/msg/PointCloud2`. A bag using Livox `CustomMsg` would require a different setting.
 
-This project was also completed on ROS 2 Jazzy, even though the FAST_LIO_ROS2 documentation recommends ROS 2 Humble. Because of that, some build and compatibility fixes were required.
+The final result should therefore be understood as a working LiDAR-inertial SLAM integration and visualization demonstration rather than a quantitatively evaluated SLAM benchmark.
 
-Finally, the result was evaluated visually in RViz rather than with numerical accuracy metrics. I confirmed that FAST-LIO produced point cloud and odometry output, but I did not compare the estimated trajectory against ground truth.
+---
 
-Overall, the system was successful for integration and visualization, but the final result should be understood as a working qualitative SLAM demo rather than a fully optimized or quantitatively evaluated SLAM benchmark.
+# Key Takeaways
 
-## What I Learned
+The most important lesson from this project was that running a SLAM package requires more than launching a ROS node.
 
-This project taught me that LiDAR SLAM integration is not only about launching a ROS package. The system has to match the dataset’s topic names, message types, frames, and timing behavior.
+The algorithm's assumptions must match the actual dataset, including:
 
-The most important thing I learned was that FAST-LIO2 is a LiDAR-inertial system, not a LiDAR-only system. The LiDAR provides the 3D point cloud of the environment, while the IMU provides motion information such as turning, acceleration, and vibration. FAST-LIO uses both sensors together to estimate the movement of the sensor and build a map.
+* Topic names
+* Message types
+* Coordinate frames
+* IMU availability
+* Timestamp behavior
+* Configuration values
 
-In simple terms:
+For this project, the most important correction was matching FAST-LIO to the bag's LiDAR message type:
 
 ```text
-LiDAR sees the environment.
-IMU feels the movement.
-FAST-LIO combines both to estimate motion and build the map.
-```
-
-I also learned that message type matters a lot. The provided bags published `/livox/lidar` as:
-
-```text
+Bag message type:
 sensor_msgs/msg/PointCloud2
+
+Required FAST-LIO setting:
+preprocess.lidar_type: 4
 ```
 
-but the original FAST-LIO Livox configuration expected:
+The project also demonstrated that active input topics do not automatically mean the SLAM pipeline is producing output. Input and output topics must be checked independently.
 
-```text
-livox_ros_driver2/msg/CustomMsg
-```
+---
 
-Because of that, FAST-LIO did not work correctly until I changed:
+# References
 
-```yaml
-preprocess:
-  lidar_type: 4
-```
+* [FAST-LIO2: Fast Direct LiDAR-Inertial Odometry](https://arxiv.org/abs/2107.06829)
+* [FAST_LIO_ROS2](https://github.com/Ericsii/FAST_LIO_ROS2)
+* [Livox SDK2](https://github.com/Livox-SDK/Livox-SDK2)
+* [Livox ROS Driver 2](https://github.com/Livox-SDK/livox_ros_driver2)
 
-This was the most important configuration fix in the project.
+---
 
-I also learned that RViz fixed frames depend on what is being visualized. When visualizing the raw LiDAR topic, the fixed frame should usually match the LiDAR message frame. However, when visualizing FAST-LIO output, the correct fixed frame was:
+# Acknowledgments
 
-```text
-camera_init
-```
-
-This worked because RViz showed:
-
-```text
-Global Status: Ok
-Fixed Frame: OK
-```
-
-Another important thing I learned was that ROS 1 and ROS 2 workspaces use different setup files. Some repository instructions referenced:
-
-```text
-devel/setup.bash
-```
-
-but this project used ROS 2, so the correct workspace setup file was:
-
-```text
-install/setup.bash
-```
-
-I also learned that looped bag playback can cause problems for systems that maintain motion history. FAST-LIO worked reliably when the bag was played once from a fresh launch, but it did not reliably keep publishing `/cloud_registered` after the bag restarted in loop mode. This showed that even when the input topics are still publishing, the SLAM system itself may stop producing output.
-
-Overall, I learned how to:
-
-- build Livox SDK2,
-- build `livox_ros_driver2`,
-- build FAST_LIO_ROS2,
-- inspect ROS 2 bag topics,
-- check LiDAR and IMU message types,
-- modify FAST-LIO configuration files,
-- debug RViz frame issues,
-- verify IMU data,
-- identify FAST-LIO output topics,
-- and document integration problems clearly.
-
-The main lesson was that a successful SLAM project depends on matching the algorithm’s assumptions to the actual data being used.
+This project uses open-source work from the FAST-LIO and Livox development teams. Their repositories provided the LiDAR-inertial odometry implementation, Livox SDK, ROS 2 message definitions, and driver integration used in this project.
