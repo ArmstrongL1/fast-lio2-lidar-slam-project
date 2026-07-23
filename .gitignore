@@ -1,0 +1,20 @@
+# ROS build folders
+build/
+install/
+log/
+
+# Bag files are usually too large for GitHub
+*.db3
+*.mcap
+*.bag
+lidar_bags/
+data/
+
+# Python/cache/temp
+__pycache__/
+*.pyc
+.cache/
+
+# System files
+.DS_Store
+*.swp
